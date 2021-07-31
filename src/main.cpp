@@ -7,14 +7,10 @@ float altitude_offset = 0;
 
 
 #include <SBUS2.h>
-#define ERROR_SLOT        21     // 1 Slot Sensor
-#define VARIO_SLOT        22    // 2 Slot Sensor
-#define GPS_SLOT          24    // 8 Slot Sensor
+#define VARIO_SLOT        21    // 2 Slot Sensor
 
-int16_t channel = 0;
-uint8_t FrameErrorRate = 0;
 
-#define DEBUG
+//#define DEBUG
 
 void setup() {
 
@@ -31,10 +27,13 @@ void setup() {
   pressure_sensor.setOversampleRate(7); // Set Oversample to the recommended 128
   pressure_sensor.enableEventFlags(); // Enable all three pressure and temp event flags 
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+
   #ifndef DEBUG
     // Setup for SBUS2 Vario Telemetry sensor
     SBUS2_Setup();
-    send_f1672_vario(VARIO_SLOT, (int16_t) 0, (int16_t) 0);
+    //send_f1672_vario(VARIO_SLOT, (int16_t) 0, (int16_t) 0);
   #endif
   #ifdef DEBUG
     Serial.begin(9600);
@@ -43,13 +42,17 @@ void setup() {
   uint8_t samples = 15;
   for(int i=0; i < samples; i++){
     altitude_offset += pressure_sensor.readAltitude();
-    delay(1000);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(500);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(500);
+
     #ifdef DEBUG
       Serial.print("*");
     #endif
     #ifndef DEBUG
       if(SBUS2_Ready()){
-        send_alarm_as_temp125(ERROR_SLOT, i);
+        send_s1678_current(VARIO_SLOT, (float) 0.0, i, (float) 0.0); 
       }
     #endif
   }
@@ -67,31 +70,20 @@ void loop() {
   uint8_t nSamples = 3;
   for(int i = 0; i<nSamples; i++){
     altitude += pressure_sensor.readAltitude();
-    delay(1000);
+    if(i < 2){
+      delay(1000);
+    }else{
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100); 
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(900);
+    }
   }
   altitude = (altitude/nSamples) - altitude_offset;
   
   #ifndef DEBUG
-    uint16_t uart_dropped_frame = 0;
-    bool transmission_dropt_frame = false;
-    bool failsave = false;
-
-    
-    if(SBUS2_Ready()){                                                                                                // SBUS2 Frame available -> Ready for transmit Telemetry                                                                                    // set pin D13 (LED ON) -> SBUS2 Frames OK                                      
-      //FrameErrorRate = SBUS2_get_FER();
-      
-      SBUS2_get_status(&uart_dropped_frame, &transmission_dropt_frame, &failsave);                                     // Check SBUS(2) Status
-      if((uart_dropped_frame > 1) ||(transmission_dropt_frame != 0) || (failsave != 0) ){
-          send_alarm_as_temp125(ERROR_SLOT, ((failsave*1000) + (transmission_dropt_frame*100) + uart_dropped_frame));
-          uart_dropped_frame = 0;
-          transmission_dropt_frame = false;
-          failsave = false;
-        }
-    }
-
     if(SBUS_Ready()){
-      send_F1672(VARIO_SLOT , 1234, (float) 0);    
-      send_SBS01V(GPS_SLOT, altitude, altitude); 
+      send_s1678_current(VARIO_SLOT, (float) 0, 0, altitude);    
     }
   #endif
   #ifdef DEBUG
